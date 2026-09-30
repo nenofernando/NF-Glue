@@ -1,0 +1,180 @@
+#pragma once
+#include <JuceHeader.h>
+#include "PluginProcessor.h"
+#include "UI/NFGlueLookAndFeel.h"
+#include "UI/ValueCapsule.h"
+#include "PresetManager.h"
+
+// Gain-reduction meter: vertical LED ladder that hangs from the top (0 dB) down to 20 dB, scale on its right.
+class NFGlueGainReductionMeter final:public juce::Component, private juce::Timer
+{
+public:
+    explicit NFGlueGainReductionMeter(std::atomic<float>& source):src(source){ setInterceptsMouseClicks(false,false); startTimerHz(30); }
+    void paint(juce::Graphics& g) override
+    {
+        const float s = (float)getWidth() / 80.0f;
+        constexpr int numSeg = 10; constexpr float maxDb = 20.0f;
+        const float barX = 14.0f*s, barW = 26.0f*s, top = 16.0f*s, bottom = (float)getHeight() - 4.0f*s;
+        g.setColour(juce::Colour(0x50000000));
+        g.fillRoundedRectangle(barX-3.0f*s, top-3.0f*s+2.0f*s, barW+6.0f*s, bottom-top+6.0f*s, 5.0f*s);
+        g.setColour(juce::Colour(0xff0d130f));
+        g.fillRoundedRectangle(barX-3.0f*s, top-3.0f*s, barW+6.0f*s, bottom-top+6.0f*s, 5.0f*s);
+        const float segH = (bottom-top) / (float)numSeg;
+        for (int i=0;i<numSeg;++i)
+        {
+            const bool lit = shown > ((float)i + 0.05f) * (maxDb/(float)numSeg);
+            const bool hot = i >= 6;
+            juce::Rectangle<float> seg(barX, top + (float)i*segH + 1.2f*s, barW, segH - 2.4f*s);
+            g.setColour(lit ? (hot ? juce::Colour(0xffe8863a) : juce::Colour(0xffffdd7a)) : juce::Colour(0xff222c25));
+            g.fillRoundedRectangle(seg, 1.5f*s);
+            if (lit){ g.setColour(juce::Colours::white.withAlpha(0.35f)); g.fillRoundedRectangle(seg.reduced(1.5f*s).removeFromTop(seg.getHeight()*0.35f), 1.0f*s); }
+        }
+        g.setColour(juce::Colours::white);
+        g.setFont(juce::Font(juce::FontOptions(12.5f*s)));
+        struct L{ int seg; const char* t; };
+        for (auto l : {L{0,"0"},L{3,"6"},L{6,"12"},L{10,"20"}})
+            g.drawText(l.t, juce::Rectangle<float>(barX+barW+6.0f*s, top + (float)l.seg*segH - 8.0f*s, 30.0f*s, 16.0f*s), juce::Justification::centredLeft);
+        g.drawText("dB", juce::Rectangle<float>(barX-6.0f*s, 0.0f, barW+12.0f*s, 14.0f*s), juce::Justification::centred);
+    }
+private:
+    void timerCallback() override
+    {
+        const float target = juce::jlimit(0.0f, 20.0f, src.load());
+        // Fast attack, slower fall so short reductions stay readable.
+        shown = target > shown ? target : shown + (target - shown) * 0.25f;
+        if (std::abs(shown - lastPainted) > 0.05f) { lastPainted = shown; repaint(); }
+    }
+    std::atomic<float>& src;
+    float shown = 0.0f, lastPainted = -1.0f;
+};
+
+// "2x" toggle next to the Ratio capsule: doubles the selected ratio for heavier compression.
+class NFGlueBoostButton final:public juce::ToggleButton
+{
+public:
+    NFGlueBoostButton(){ setMouseCursor(juce::MouseCursor::PointingHandCursor); }
+    void paintButton(juce::Graphics& g,bool over,bool) override
+    {
+        const float s = (float)getWidth() / 48.0f;
+        auto r = getLocalBounds().toFloat().reduced(1.0f*s);
+        const bool on = getToggleState();
+        g.setColour(juce::Colour(0x50000000));
+        g.fillRoundedRectangle(r.translated(0.0f,2.0f*s), 7.0f*s);
+        g.setGradientFill(on ? juce::ColourGradient(juce::Colour(0xffffe9a0), 0.0f, r.getY(), juce::Colour(0xffe8b84a), 0.0f, r.getBottom(), false)
+                             : juce::ColourGradient(juce::Colour(over ? 0xfffaf8ef : 0xfff2f0e7), 0.0f, r.getY(), juce::Colour(0xffd9d6c9), 0.0f, r.getBottom(), false));
+        g.fillRoundedRectangle(r, 7.0f*s);
+        g.setColour(juce::Colour(0xff111511));
+        g.drawRoundedRectangle(r, 7.0f*s, 1.6f*s);
+        g.setColour(juce::Colour(0xff101510));
+        g.setFont(juce::Font(juce::FontOptions(16.0f*s,juce::Font::bold)));
+        g.drawText("2x", r, juce::Justification::centred);
+    }
+};
+
+class NFGluePowerButton final:public juce::ToggleButton
+{
+public:void paintButton(juce::Graphics&,bool,bool) override;
+};
+
+// Invisible hit-target over the NF logo: double-click returns the window to its original size.
+class NFGlueLogoButton final:public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    std::function<void()> onDoubleClick;
+    NFGlueLogoButton(){ setMouseCursor(juce::MouseCursor::PointingHandCursor); }
+    void mouseDoubleClick(const juce::MouseEvent&) override { if (onDoubleClick) onDoubleClick(); }
+};
+
+// Three-line hamburger icon opening the presets menu (same as NF Q3).
+class NFGlueMenuButton final:public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    std::function<void()> onClick;
+    NFGlueMenuButton(){ setMouseCursor(juce::MouseCursor::PointingHandCursor); }
+    void paint(juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        const float lineH = juce::jmax(1.6f, b.getHeight()*0.10f);
+        g.setColour(juce::Colour(0xffeef2ee));
+        for (int i=0;i<3;++i)
+        {
+            const float y = b.getY() + b.getHeight()*(0.20f + (float)i*0.30f);
+            g.fillRoundedRectangle(b.getX(), y, b.getWidth(), lineH, lineH*0.5f);
+        }
+    }
+    void mouseUp(const juce::MouseEvent& e) override { if (contains(e.getPosition()) && onClick) onClick(); }
+};
+
+// Temporary floating value readout over the OUTPUT fader while it is being moved.
+class NFGlueGainBubble final:public juce::Component, private juce::Timer
+{
+public:
+    NFGlueGainBubble(){ setInterceptsMouseClicks(false,false); setAlpha(0.0f); }
+    void showValue(double dB)
+    {
+        if (std::abs(dB) < 0.05) dB = 0.0;
+        juce::String s = juce::String(dB, 1);
+        if (dB > 0.0) s = "+" + s;
+        showRaw(s + " dB");
+    }
+    void showRaw(const juce::String& t)
+    {
+        text = t;
+        juce::Desktop::getInstance().getAnimator().cancelAnimation(this, false);
+        setAlpha(1.0f);
+        setVisible(true);
+        repaint();
+        startTimer(800);
+    }
+    void paint(juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat().reduced(1.0f);
+        g.setColour(juce::Colour(0xff0a140d).withAlpha(0.85f));
+        g.fillRoundedRectangle(b, 6.0f);
+        g.setColour(juce::Colour(0xffd9d4c4).withAlpha(0.6f));
+        g.drawRoundedRectangle(b, 6.0f, 1.0f);
+        g.setColour(juce::Colour(0xfff2efe4));
+        g.setFont(juce::Font(juce::FontOptions(juce::jmax(11.0f, b.getHeight()*0.5f), juce::Font::bold)));
+        g.drawText(text, b, juce::Justification::centred);
+    }
+private:
+    void timerCallback() override
+    {
+        stopTimer();
+        juce::Desktop::getInstance().getAnimator().fadeOut(this, 220);
+    }
+    juce::String text;
+};
+
+class NFGlueAudioProcessorEditor final:public juce::AudioProcessorEditor
+{
+public:
+    explicit NFGlueAudioProcessorEditor(NFGlueAudioProcessor&);
+    ~NFGlueAudioProcessorEditor() override;
+    void paint(juce::Graphics&) override;void resized() override;
+private:
+    struct Tick { float deg; juce::String label; bool major; float fontSize; float labelOffset = 29.0f; };
+    void drawScale(juce::Graphics&,juce::Point<float> centre,const std::vector<Tick>&);
+    juce::Rectangle<int> scaleBounds(juce::Rectangle<float> baseBounds) const;
+    void showMainMenu();
+    void handleSavePreset();
+    void handleLoadPreset();
+    void showAbout();
+
+    float layoutScale=1.0f, offsetX=0.0f, offsetY=0.0f;
+    NFGlueAudioProcessor& processor;NFGlueLookAndFeel look;
+    juce::TooltipWindow tooltipWindow{this, 500};
+    NFGlueMenuButton menuButton;
+    NFGlueLogoButton logoButton;
+    std::unique_ptr<juce::FileChooser> presetFileChooser;
+    juce::Slider thresholdKnob,ratioKnob,attackKnob,releaseKnob,outputKnob;
+    NFGlueGainBubble outputBubble,thresholdBubble,ratioBubble,attackBubble,releaseBubble;
+    NFGlueGainReductionMeter grMeter;
+    ValueCapsule thresholdCap,ratioCap,attackCap,releaseCap,outputCap;
+    NFGluePowerButton power;
+    NFGlueBoostButton boost2x;
+    using SA=juce::AudioProcessorValueTreeState::SliderAttachment;
+    std::unique_ptr<SA> thresholdA,ratioA,attackA,releaseA,outputGainA,outputCapA,thresholdCapA,ratioCapA,attackCapA,releaseCapA;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerA,boostA;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NFGlueAudioProcessorEditor)
+};
