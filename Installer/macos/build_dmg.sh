@@ -20,8 +20,8 @@
 #   WRAP_GUID=...             wrap GUID (default: "NF Glue - Signing Only")
 #   EXTRA_WRAP_ARGS="..."     extra `wraptool sign` options your PACE setup needs
 #   SIGN_ID="..."             Apple code-sign identity for VST3/AU (default "-" = ad-hoc, no Apple Developer)
-#   WRAP_SIGNID="..."         codesign identity handed to wraptool --signid for the AAX (default: same as SIGN_ID, i.e.
-#                             "-" ad-hoc). wraptool REQUIRES a --signid because the wrap has "Digitally sign binary".
+#   WRAP_SIGNID="..."         codesign identity handed to wraptool --signid for the AAX (default: SIGN_ID, else the local
+#                             certificate "NF Audio Tools AAX Local Signing" if found in the keychain, else "-" ad-hoc). wraptool REQUIRES a --signid because the wrap has "Digitally sign binary".
 #                             If your wraptool rejects "-", create a free local certificate (Keychain Access >
 #                             Certificate Assistant > Create a Certificate > type "Code Signing") and pass its name here.
 #   SKIP_AAX=1                installer WITHOUT AAX (VST3 + AU only)
@@ -45,7 +45,14 @@ WORK="$REPO_ROOT/build-glue-installer"
 OUT_DIR="${OUT_DIR:-$HOME/Desktop}"
 SIGN_ID="${SIGN_ID:--}"
 WRAP_ACCOUNT="${WRAP_ACCOUNT:-nenofernando}"
-WRAP_SIGNID="${WRAP_SIGNID:-$SIGN_ID}"
+# Identity for `wraptool --signid`: explicit WRAP_SIGNID, else SIGN_ID if set, else the owner's local certificate
+# "NF Audio Tools AAX Local Signing" when it is in the keychain, else ad-hoc ("-").
+LOCAL_SIGNID="NF Audio Tools AAX Local Signing"
+if [ -z "${WRAP_SIGNID:-}" ]; then
+  if [ "$SIGN_ID" != "-" ]; then WRAP_SIGNID="$SIGN_ID"
+  elif security find-identity -v -p codesigning 2>/dev/null | grep -q "$LOCAL_SIGNID"; then WRAP_SIGNID="$LOCAL_SIGNID"
+  else WRAP_SIGNID="-"; fi
+fi
 WRAP_GUID="${WRAP_GUID:-3FA9A390-BCC4-11F1-8E61-00505692C25A}"
 WITH_AAX=1; [ "${SKIP_AAX:-0}" = "1" ] && WITH_AAX=0
 PKG_NAME="Install $PRODUCT $VERSION.pkg"

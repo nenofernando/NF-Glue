@@ -19,7 +19,7 @@ After a bump, grep for the old version to catch anything missed:
   Welcome / Read Me / Conclusion, a Customize step to pick VST3, AU and AAX, "NF Audio Tools by Nenno Fernando".
   **No Apple Developer account for now**: VST3/AU are ad-hoc signed and the `.pkg` is unsigned (Gatekeeper: right-click > Open
   on other Macs). macOS cannot auto-launch an installer from a DMG, so the DMG opens a clean Finder window with only
-  "Install NF Glue X.Y.Z.pkg". PACE account for signing: `nenofernando` (`WRAP_ACCOUNT`); `wraptool sign` also needs `--signid` (the wrap has "Digitally sign binary"), the script passes `WRAP_SIGNID` (default `-` = ad-hoc); the AAX SDK is auto-detected in `~/Documents`.
+  "Install NF Glue X.Y.Z.pkg". PACE account for signing: `nenofernando` (`WRAP_ACCOUNT`); `wraptool sign` also needs `--signid` (the wrap has "Digitally sign binary"), the script passes `WRAP_SIGNID` (auto: the owner's local keychain certificate "NF Audio Tools AAX Local Signing" if present, else `-` ad-hoc); the AAX SDK is auto-detected in `~/Documents`.
 - **AAX must be in the installers and PACE-signed** (`wraptool`, wrap "NF Glue - Signing Only",
   Wrap GUID `3FA9A390-BCC4-11F1-8E61-00505692C25A`). AAX SDK is expected in `~/Documents/AAX_SDK`
   (`AAX_SDK_PATH` overrides). `SKIP_AAX=1` is the only way to build without it. Never re-run `codesign` on a
