@@ -17,3 +17,5 @@ See `CLAUDE.md` for the rules (version, AAX SDK, signing).
 ```
 g++ -std=c++17 -Wall -Wextra Tests/CompressorTests.cpp -o dsp_tests && ./dsp_tests
 ```
+
+Opens at 810 x 270 and remembers the size you choose with the resize handle; double-click the NF logo to go back to the default. A small preset tab (prev / name / next) sits at the top right; the 3-line button holds About.

@@ -37,15 +37,25 @@ NFGlueAudioProcessorEditor::NFGlueAudioProcessorEditor(NFGlueAudioProcessor& p)
     setResizable(true,true);
     getConstrainer()->setFixedAspectRatio(3.0);
     getConstrainer()->setSizeLimits(750,250,1800,600);
-    setSize(900,300);
+    {
+        const int w = juce::jlimit(750, 1800, (int) p.apvts.state.getProperty("uiWidth", 810));   // size chosen with the resize handle survives close / reopen
+        setSize(w, w/3);
+    }
 
     addAndMakeVisible(logoButton);
     logoButton.setTooltip("Double-click: reset UI size");
-    logoButton.onDoubleClick = [this]{ setSize(900,300); };
+    logoButton.onDoubleClick = [this]{ setSize(810,270); };
 
     addAndMakeVisible(menuButton);
-    menuButton.setTooltip("Presets");
+    menuButton.setTooltip("About");
     menuButton.onClick = [this]{ showMainMenu(); };
+    addAndMakeVisible(presetBar);
+    presetBar.setTooltip("Preset: click the name for the list, arrows = previous / next");
+    presetBar.onPrev = [this]{ stepPreset(-1); };
+    presetBar.onNext = [this]{ stepPreset(+1); };
+    presetBar.onMenu = [this]{ showPresetMenu(); };
+    presetBar.setName(nfglue::PresetManager::getCurrentPresetName(processor.apvts));
+    processor.apvts.state.addListener(this);
 
     struct K{ juce::Slider* s; double def; };
     for(auto k:{K{&thresholdKnob,-20.0},K{&ratioKnob,(double)nfglue::kDefaultRatioIndex},K{&attackKnob,5.5},K{&releaseKnob,1.25},K{&outputKnob,0.0}}){
@@ -81,7 +91,7 @@ NFGlueAudioProcessorEditor::NFGlueAudioProcessorEditor(NFGlueAudioProcessor& p)
     power.onStateChange=[this]{repaint();};
     outputGainA=std::make_unique<SA>(a,"outputGain",outputKnob);outputCapA=std::make_unique<SA>(a,"outputGain",outputCap.slider);
 }
-NFGlueAudioProcessorEditor::~NFGlueAudioProcessorEditor(){setLookAndFeel(nullptr);}
+NFGlueAudioProcessorEditor::~NFGlueAudioProcessorEditor(){processor.apvts.state.removeListener(this);cancelPendingUpdate();setLookAndFeel(nullptr);}
 
 juce::Rectangle<int> NFGlueAudioProcessorEditor::scaleBounds(juce::Rectangle<float> b) const
 {
@@ -91,28 +101,46 @@ juce::Rectangle<int> NFGlueAudioProcessorEditor::scaleBounds(juce::Rectangle<flo
 
 void NFGlueAudioProcessorEditor::showMainMenu()
 {
-    juce::PopupMenu factory;
-    for (int i = 0; i < nfglue::kNumFactoryPresets; ++i)
-        factory.addItem(100 + i, nfglue::kFactoryPresets[i].name);
-
     juce::PopupMenu menu;
-    menu.addSectionHeader("PRESETS");
-    menu.addSubMenu("Factory Presets", factory);
-    menu.addSeparator();
-    menu.addItem(1, "Save Preset...");
-    menu.addItem(2, "Load Preset...");
-    menu.addSeparator();
     menu.addItem(3, "About");
     juce::Component::SafePointer<NFGlueAudioProcessorEditor> safeThis(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&menuButton),
         [safeThis](int result)
         {
             if (safeThis == nullptr || result == 0) return;
+            if (result == 3) safeThis->showAbout();
+        });
+}
+
+// Preset tab: factory presets, then save / load
+void NFGlueAudioProcessorEditor::showPresetMenu()
+{
+    juce::PopupMenu menu;
+    const auto current = nfglue::PresetManager::getCurrentPresetName(processor.apvts);
+    for (int i = 0; i < nfglue::kNumFactoryPresets; ++i)
+        menu.addItem(100 + i, nfglue::kFactoryPresets[i].name, true, current == nfglue::kFactoryPresets[i].name);
+    menu.addSeparator();
+    menu.addItem(1, "Save Preset...");
+    menu.addItem(2, "Load Preset...");
+    juce::Component::SafePointer<NFGlueAudioProcessorEditor> safeThis(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&presetBar).withMinimumWidth(presetBar.getWidth()),
+        [safeThis](int result)
+        {
+            if (safeThis == nullptr || result == 0) return;
             if (result == 1) safeThis->handleSavePreset();
             else if (result == 2) safeThis->handleLoadPreset();
-            else if (result == 3) safeThis->showAbout();
             else if (result >= 100) nfglue::PresetManager::applyFactoryPreset(safeThis->processor.apvts, result - 100);
         });
+}
+
+void NFGlueAudioProcessorEditor::stepPreset(int direction)
+{
+    const auto current = nfglue::PresetManager::getCurrentPresetName(processor.apvts);
+    int index = -1;
+    for (int i = 0; i < nfglue::kNumFactoryPresets; ++i) if (current == nfglue::kFactoryPresets[i].name) { index = i; break; }
+    const int n = nfglue::kNumFactoryPresets;
+    index = index < 0 ? (direction > 0 ? 0 : n - 1) : (index + direction + n) % n;
+    nfglue::PresetManager::applyFactoryPreset(processor.apvts, index);
 }
 
 void NFGlueAudioProcessorEditor::showAbout()
@@ -255,6 +283,7 @@ void NFGlueAudioProcessorEditor::paint(juce::Graphics& g)
 
 void NFGlueAudioProcessorEditor::resized()
 {
+    if (getWidth() > 0) processor.apvts.state.setProperty("uiWidth", getWidth(), nullptr);   // remembered for the next time the window opens
     const float scaleX = getWidth()  / 1200.0f, scaleY = getHeight() / 400.0f;
     layoutScale = juce::jmin(scaleX, scaleY);
     offsetX = (getWidth()  - 1200.0f * layoutScale) * 0.5f;
@@ -280,4 +309,5 @@ void NFGlueAudioProcessorEditor::resized()
     attackBubble.setBounds(scaleBounds({kAttackX-38.0f, 202.0f, 76.0f, 24.0f}));
     releaseBubble.setBounds(scaleBounds({kReleaseX-38.0f, 202.0f, 76.0f, 24.0f}));
     menuButton.setBounds(scaleBounds({1020.0f, 25.0f, 34.0f, 28.0f}));
+    presetBar.setBounds(scaleBounds({780.0f, 24.0f, 225.0f, 29.0f}));
 }

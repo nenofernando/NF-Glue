@@ -33,3 +33,5 @@ After a bump, grep for the old version to catch anything missed:
 - "2x" = ratio x2 and threshold -6 dB (doubling the ratio alone is inaudible at high ratios).
 - Output is makeup gain 0..+24 dB (0 dB at the far left).
 - No licence system yet (NF Q3 has one); decide before selling.
+
+- UI: default window 810 x 270 (same as every NF plug-in); the size chosen with the resize handle is stored in the plug-in state (`uiWidth`) and restored when the window is reopened; double-click on the NF logo returns to 810 x 270. Preset tab (prev / name / next) at the top right; the 3-line button holds About.

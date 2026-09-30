@@ -24,6 +24,7 @@ void PresetManager::applyFactoryPreset(juce::AudioProcessorValueTreeState& apvts
 {
     if (index < 0 || index >= kNumFactoryPresets) return;
     const auto& f = kFactoryPresets[index];
+    apvts.state.setProperty("presetName", f.name, nullptr);
     setParamValue(apvts, "threshold", f.thresholdDb);
     setParamValue(apvts, "ratio", (float) f.ratioIndex);
     setParamValue(apvts, "ratio2x", 0.0f);
@@ -31,6 +32,11 @@ void PresetManager::applyFactoryPreset(juce::AudioProcessorValueTreeState& apvts
     setParamValue(apvts, "release", f.releaseSec);
     setParamValue(apvts, "outputGain", f.outputDb);
     setParamValue(apvts, "power", 1.0f);
+}
+
+juce::String PresetManager::getCurrentPresetName(juce::AudioProcessorValueTreeState& apvts)
+{
+    return apvts.state.getProperty("presetName", "Default").toString();
 }
 
 juce::File PresetManager::getPresetsDirectory()
@@ -45,6 +51,7 @@ juce::File PresetManager::getPresetsDirectory()
 
 juce::Result PresetManager::savePreset(juce::AudioProcessorValueTreeState& apvts, const juce::File& file)
 {
+    apvts.state.setProperty("presetName", file.getFileNameWithoutExtension(), nullptr);   // the saved preset carries its own name
     auto xml = apvts.copyState().createXml();
     if (xml == nullptr)
         return juce::Result::fail("Could not serialise the current state.");

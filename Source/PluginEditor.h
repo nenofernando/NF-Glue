@@ -105,6 +105,45 @@ public:
     void mouseUp(const juce::MouseEvent& e) override { if (contains(e.getPosition()) && onClick) onClick(); }
 };
 
+// Small horizontal preset tab: [<]  preset name  [>]. Arrows step through the factory presets, a click on the name opens the list.
+class NFGluePresetBar final:public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    std::function<void()> onPrev, onNext, onMenu;
+    NFGluePresetBar(){ setMouseCursor(juce::MouseCursor::PointingHandCursor); }
+    void setName(const juce::String& n){ if (n != name) { name = n; repaint(); } }
+    void paint(juce::Graphics& g) override
+    {
+        const float s = (float)getHeight() / 29.0f;
+        auto r = getLocalBounds().toFloat().reduced(1.0f*s);
+        g.setColour(juce::Colour(0x50000000));
+        g.fillRoundedRectangle(r.translated(0.0f,2.0f*s), 8.0f*s);
+        g.setGradientFill(juce::ColourGradient(juce::Colour(0xfff6f4ec), 0.0f, r.getY(), juce::Colour(0xffdcd9cc), 0.0f, r.getBottom(), false));
+        g.fillRoundedRectangle(r, 8.0f*s);
+        g.setColour(juce::Colour(0xff111511));
+        g.drawRoundedRectangle(r, 8.0f*s, 1.6f*s);
+        // arrows
+        g.setColour(juce::Colour(0xff101510));
+        const float cy = r.getCentreY(), ax = 13.0f*s, w = 5.0f*s, h = 6.0f*s;
+        juce::Path left, right;
+        left.addTriangle(r.getX()+ax+w, cy-h, r.getX()+ax+w, cy+h, r.getX()+ax-w, cy);
+        right.addTriangle(r.getRight()-ax-w, cy-h, r.getRight()-ax-w, cy+h, r.getRight()-ax+w, cy);
+        g.fillPath(left); g.fillPath(right);
+        g.setFont(juce::Font(juce::FontOptions(15.0f*s, juce::Font::bold)));
+        g.drawFittedText(name, juce::Rectangle<float>(r.getX()+28.0f*s, r.getY(), r.getWidth()-56.0f*s, r.getHeight()).toNearestInt(), juce::Justification::centred, 1);
+    }
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        if (!contains(e.getPosition())) return;
+        const float s = (float)getHeight() / 29.0f;
+        if (e.position.x < 28.0f*s) { if (onPrev) onPrev(); }
+        else if (e.position.x > (float)getWidth() - 28.0f*s) { if (onNext) onNext(); }
+        else if (onMenu) onMenu();
+    }
+private:
+    juce::String name { "Default" };
+};
+
 // Temporary floating value readout over the OUTPUT fader while it is being moved.
 class NFGlueGainBubble final:public juce::Component, private juce::Timer
 {
@@ -146,7 +185,7 @@ private:
     juce::String text;
 };
 
-class NFGlueAudioProcessorEditor final:public juce::AudioProcessorEditor
+class NFGlueAudioProcessorEditor final:public juce::AudioProcessorEditor, private juce::ValueTree::Listener, private juce::AsyncUpdater
 {
 public:
     explicit NFGlueAudioProcessorEditor(NFGlueAudioProcessor&);
@@ -156,6 +195,11 @@ private:
     struct Tick { float deg; juce::String label; bool major; float fontSize; float labelOffset = 29.0f; };
     void drawScale(juce::Graphics&,juce::Point<float> centre,const std::vector<Tick>&);
     juce::Rectangle<int> scaleBounds(juce::Rectangle<float> baseBounds) const;
+    // the preset name lives in the plug-in state; refresh the tab whenever it changes (may come from a non-message thread)
+    void valueTreePropertyChanged(juce::ValueTree&, const juce::Identifier& id) override { if (id.toString() == "presetName") triggerAsyncUpdate(); }
+    void handleAsyncUpdate() override { presetBar.setName(nfglue::PresetManager::getCurrentPresetName(processor.apvts)); }
+    void showPresetMenu();
+    void stepPreset(int direction);
     void showMainMenu();
     void handleSavePreset();
     void handleLoadPreset();
@@ -165,6 +209,7 @@ private:
     NFGlueAudioProcessor& processor;NFGlueLookAndFeel look;
     juce::TooltipWindow tooltipWindow{this, 500};
     NFGlueMenuButton menuButton;
+    NFGluePresetBar presetBar;
     NFGlueLogoButton logoButton;
     std::unique_ptr<juce::FileChooser> presetFileChooser;
     juce::Slider thresholdKnob,ratioKnob,attackKnob,releaseKnob,outputKnob;
