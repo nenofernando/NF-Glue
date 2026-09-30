@@ -309,5 +309,5 @@ void NFGlueAudioProcessorEditor::resized()
     attackBubble.setBounds(scaleBounds({kAttackX-38.0f, 202.0f, 76.0f, 24.0f}));
     releaseBubble.setBounds(scaleBounds({kReleaseX-38.0f, 202.0f, 76.0f, 24.0f}));
     menuButton.setBounds(scaleBounds({1020.0f, 25.0f, 34.0f, 28.0f}));
-    presetBar.setBounds(scaleBounds({835.0f, 27.0f, 170.0f, 23.0f}));
+    presetBar.setBounds(scaleBounds({848.0f, 28.0f, 157.0f, 21.0f}));
 }
