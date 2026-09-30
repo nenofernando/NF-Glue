@@ -20,6 +20,10 @@
 #   WRAP_GUID=...             wrap GUID (default: "NF Glue - Signing Only")
 #   EXTRA_WRAP_ARGS="..."     extra `wraptool sign` options your PACE setup needs
 #   SIGN_ID="..."             Apple code-sign identity for VST3/AU (default "-" = ad-hoc, no Apple Developer)
+#   WRAP_SIGNID="..."         codesign identity handed to wraptool --signid for the AAX (default: same as SIGN_ID, i.e.
+#                             "-" ad-hoc). wraptool REQUIRES a --signid because the wrap has "Digitally sign binary".
+#                             If your wraptool rejects "-", create a free local certificate (Keychain Access >
+#                             Certificate Assistant > Create a Certificate > type "Code Signing") and pass its name here.
 #   SKIP_AAX=1                installer WITHOUT AAX (VST3 + AU only)
 #   ARCHS="arm64"             build only this architecture (default: arm64;x86_64 universal)
 #   WRITE_RESOURCES_ONLY=dir  only write the installer texts/XML to "dir" and exit (for checking)
@@ -41,6 +45,7 @@ WORK="$REPO_ROOT/build-glue-installer"
 OUT_DIR="${OUT_DIR:-$HOME/Desktop}"
 SIGN_ID="${SIGN_ID:--}"
 WRAP_ACCOUNT="${WRAP_ACCOUNT:-nenofernando}"
+WRAP_SIGNID="${WRAP_SIGNID:-$SIGN_ID}"
 WRAP_GUID="${WRAP_GUID:-3FA9A390-BCC4-11F1-8E61-00505692C25A}"
 WITH_AAX=1; [ "${SKIP_AAX:-0}" = "1" ] && WITH_AAX=0
 PKG_NAME="Install $PRODUCT $VERSION.pkg"
@@ -203,10 +208,17 @@ if [ "$WITH_AAX" = "1" ]; then
   AAX="$(find "$BUILD_DIR" -name "$PRODUCT.aaxplugin" -type d | head -n 1)"
   [ -d "$AAX" ] || { echo "Built AAX not found under $BUILD_DIR" >&2; exit 1; }
   echo "==> Signing AAX with PACE wraptool (account: $WRAP_ACCOUNT, wrap $WRAP_GUID)"
-  WRAP_ARGS=(sign --verbose --account "$WRAP_ACCOUNT" --wcguid "$WRAP_GUID" --in "$AAX" --out "$WORK/root/aax/$PRODUCT.aaxplugin")
+  WRAP_ARGS=(sign --verbose --account "$WRAP_ACCOUNT" --wcguid "$WRAP_GUID" --signid "$WRAP_SIGNID" --in "$AAX" --out "$WORK/root/aax/$PRODUCT.aaxplugin")
   [ -n "${WRAP_PASSWORD:-}" ] && WRAP_ARGS+=(--password "$WRAP_PASSWORD")
   # shellcheck disable=SC2086
-  "$WRAPTOOL" "${WRAP_ARGS[@]}" ${EXTRA_WRAP_ARGS:-}
+  if ! "$WRAPTOOL" "${WRAP_ARGS[@]}" ${EXTRA_WRAP_ARGS:-}; then
+    echo >&2
+    echo "wraptool failed. Used: --signid \"$WRAP_SIGNID\" (wraptool needs a codesign identity for this wrap)." >&2
+    echo "Available codesign identities on this Mac:" >&2
+    security find-identity -v -p codesigning >&2 || true
+    echo "Retry with e.g.:  WRAP_SIGNID=\"<identity name>\" bash <this script>   (or check: \"$WRAPTOOL\" sign --help)" >&2
+    exit 1
+  fi
   [ -d "$WORK/root/aax/$PRODUCT.aaxplugin" ] || { echo "wraptool did not produce the signed AAX" >&2; exit 1; }
   # Do NOT run codesign on the .aaxplugin afterwards: it would break the PACE signature.
   "$WRAPTOOL" verify --in "$WORK/root/aax/$PRODUCT.aaxplugin" --verbose || echo "(wraptool verify reported a problem, check the output above)"
