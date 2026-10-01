@@ -38,6 +38,7 @@ bool NFGlueAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) const
 void NFGlueAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals guard;
+    struct LicenseMuteGuard { NFLicenseManager& lm; juce::AudioBuffer<float>& b; ~LicenseMuteGuard(){ if(!lm.isActivated()) b.clear(); } } licenseGuard{licenseManager, buffer};
 
     outputGainLinear.setTargetValue(outputDbToGain(outputGainParam->load()));
 

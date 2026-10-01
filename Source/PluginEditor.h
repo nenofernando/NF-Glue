@@ -4,6 +4,7 @@
 #include "UI/NFGlueLookAndFeel.h"
 #include "UI/ValueCapsule.h"
 #include "PresetManager.h"
+#include "License/LicenseActivationComponent.h"
 
 // Gain-reduction meter: vertical LED ladder that hangs from the top (0 dB) down to 20 dB, scale on its right.
 class NFGlueGainReductionMeter final:public juce::Component, private juce::Timer
@@ -218,6 +219,7 @@ private:
     ValueCapsule thresholdCap,ratioCap,attackCap,releaseCap,outputCap;
     NFGluePowerButton power;
     NFGlueBoostButton boost2x;
+    LicenseActivationComponent licenseOverlay;
     using SA=juce::AudioProcessorValueTreeState::SliderAttachment;
     std::unique_ptr<SA> thresholdA,ratioA,attackA,releaseA,outputGainA,outputCapA,thresholdCapA,ratioCapA,attackCapA,releaseCapA;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerA,boostA;

@@ -1,10 +1,12 @@
 #pragma once
 #include <JuceHeader.h>
 #include "DSP/Compressor.h"
+#include "License/NFLicenseManager.h"
 
 class NFGlueAudioProcessor final : public juce::AudioProcessor
 {
 public:
+    NFLicenseManager licenseManager { "NF_GLUE" };
     NFGlueAudioProcessor();
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}

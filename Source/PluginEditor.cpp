@@ -28,7 +28,7 @@ void NFGluePowerButton::paintButton(juce::Graphics& g,bool,bool)
 }
 
 NFGlueAudioProcessorEditor::NFGlueAudioProcessorEditor(NFGlueAudioProcessor& p)
-    :AudioProcessorEditor(&p),processor(p),grMeter(p.gainReductionDb),
+    :AudioProcessorEditor(&p),processor(p),grMeter(p.gainReductionDb),licenseOverlay(p.licenseManager),
      thresholdCap("-40 to 0 dB",-20.0,true,[this](double v){ return formatDb(v - (boost2x.getToggleState() ? nfglue::kBoostThresholdDropDb : 0.0)); }),ratioCap("2:1 - 20:1",(double)nfglue::kDefaultRatioIndex,true,[this](double v){ return formatRatio(v, boost2x.getToggleState()); }),
      attackCap("0.5-10 ms",5.5,false,formatMs),releaseCap("0.25-2.5 s",1.25,false,formatSeconds),
      outputCap("0 to +24 dB",0.0,false,formatOut)
@@ -90,6 +90,11 @@ NFGlueAudioProcessorEditor::NFGlueAudioProcessorEditor(NFGlueAudioProcessor& p)
     boostA=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(a,"ratio2x",boost2x);
     power.onStateChange=[this]{repaint();};
     outputGainA=std::make_unique<SA>(a,"outputGain",outputKnob);outputCapA=std::make_unique<SA>(a,"outputGain",outputCap.slider);
+
+    addChildComponent(licenseOverlay);
+    licenseOverlay.setVisible(!processor.licenseManager.isActivated());
+    licenseOverlay.onActivated=[this]{licenseOverlay.setVisible(false);};
+    licenseOverlay.setLookAndFeel(&juce::LookAndFeel::getDefaultLookAndFeel());
 }
 NFGlueAudioProcessorEditor::~NFGlueAudioProcessorEditor(){processor.apvts.state.removeListener(this);cancelPendingUpdate();setLookAndFeel(nullptr);}
 
@@ -310,4 +315,5 @@ void NFGlueAudioProcessorEditor::resized()
     releaseBubble.setBounds(scaleBounds({kReleaseX-38.0f, 202.0f, 76.0f, 24.0f}));
     menuButton.setBounds(scaleBounds({1020.0f, 25.0f, 34.0f, 28.0f}));
     presetBar.setBounds(scaleBounds({848.0f, 28.0f, 157.0f, 21.0f}));
+    licenseOverlay.setBounds(getLocalBounds());
 }
